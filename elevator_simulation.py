@@ -11,6 +11,7 @@
 import threading
 import time
 import queue
+import sys
 from enum import Enum
 
 class Elevator:
@@ -77,6 +78,68 @@ class Status(Enum):
 # Set queue for multihreading between elevator operation and user input
 input_queue = queue.Queue()
 
+# Creates signal for elevator to respond
+# Outputs: [DIRECTION, DEST_FLOOR, CAPACITY, CURR_FLOOR]
+def create_signal(elevator):
+    # Reset after each input
+    invalid_direction = True
+    invalid_dest_floor = True
+    invalid_capacity = True
+    invalid_curr_floor = True
+
+    # Set direction of elevator
+    while invalid_direction:
+        direction_input = input("Enter UP or DOWN or 'QUIT' to exit: ")
+        if direction_input.upper() == "QUIT":
+            return "QUIT"
+        if direction_input.upper() in ["UP", "DOWN"]:
+            invalid_direction = False
+        else:
+            print ("Invalid direction.")
+
+    # Set destination floor
+    while invalid_dest_floor:
+        dest_floor_input = input("Enter floor number or 'QUIT' to exit: ")
+        # Floor must be within range set in Elevator Class
+        try:
+            if (dest_floor_input.upper() == "QUIT"):
+                return "QUIT"
+            elif (0 < int(dest_floor_input) <= elevator.floor):
+                invalid_dest_floor = False
+            else:
+                print ("Invalid floor.")
+        except ValueError:
+            print ("Invalid floor.")
+        
+    while invalid_capacity:
+        capacity_input = input("Enter capacity or 'QUIT' to exit: ")
+        # Capacity must be within range of capacity elevator can hold: This might cause issues when multithreading?
+        try:
+            if (capacity_input.upper() == "QUIT"):
+                return "QUIT"
+            elif 0 <= int(capacity_input) <= (elevator.capacity - elevator.current_capacity):
+                invalid_capacity = False
+            else:
+                print ("Invalid capacity.")
+        except ValueError:
+            print ("Invalid capacity.")
+    
+    # Set current floor
+    while invalid_curr_floor:
+        curr_floor_input = input("Enter floor number or 'QUIT' to exit: ")
+        # Floor must be within range set in Elevator Class
+        try:
+            if (curr_floor_input.upper() == "QUIT"):
+                return "QUIT"
+            elif (0 < int(curr_floor_input) <= elevator.floor):
+                invalid_curr_floor = False
+            else:
+                print ("Invalid floor.")
+        except ValueError:
+            print ("Invalid floor.")
+    
+    return ([direction_input, dest_floor_input, capacity_input, curr_floor_input])
+
 # Checks:
 # 1: Current capacity + new capacity <= elevator max capacity
 # 2: If UP:    current_floor < dest_floor
@@ -98,47 +161,12 @@ def listen_for_input(elevator):
     elevator_running = True
     
     while elevator_running:
-        # Reset after each input
-        invalid_direction = True
-        invalid_floor = True
-        invalid_capacity = True
+        signal = create_signal(elevator)
 
-        # Set direction of elevator
-        while invalid_direction:
-            direction_input = input("Enter UP or DOWN or 'QUIT' to exit: ")
-            if direction_input.upper() in ["UP", "DOWN", "QUIT"]:
-                invalid_direction = False
-            else:
-                print ("Invalid direction.")
+        # Put into queue [DIRECTION, DEST_FLOOR, CAPACITY, CURR_FLOOR] or "QUIT"
+        input_queue.put(signal)
 
-        # Set destination floor
-        while invalid_floor:
-            floor_input = input("Enter floor number or 'QUIT' to exit: ")
-            # Floor must be within range set in Elevator Class
-            try:
-                if (floor_input.upper() == "QUIT") or (0 < int(floor_input) <= elevator.floor):
-                    invalid_floor = False
-                else:
-                    print ("Invalid floor.")
-            except ValueError:
-                print ("Invalid floor.")
-            
-        while invalid_capacity:
-            capacity_input = input("Enter capacity or 'QUIT' to exit: ")
-            # Capacity must be within range of capacity elevator can hold: This might cause issues when multithreading?
-            try:
-                if (capacity_input.upper() == "QUIT") or (0 <= int(capacity_input) <= (elevator.capacity - elevator.current_capacity)):
-                    invalid_capacity = False
-                else:
-                    print ("Invalid capacity.")
-            except ValueError:
-                print ("Invalid capacity.")
-
-        # Put into queue in order of DIRECTION, FLOOR, CAPACITY
-        input_queue.put([direction_input, floor_input, capacity_input])
-
-        # Exit program
-        if direction_input.upper() == "QUIT" or floor_input.upper() == "QUIT" or capacity_input.upper() == "QUIT":
+        if signal == "QUIT":
             elevator_running = False
 
 # Elevator function to process input
@@ -150,8 +178,8 @@ def process_elevator(elevator):
         if not input_queue.empty():
             data = input_queue.get()
 
-            # Data in form of [DIRECTION, FLOOR]
-            if data[0].upper() != "QUIT" and data[1].upper() != 'QUIT' and data[2].upper() != 'QUIT':
+            # Program ends if receives "QUIT"
+            if data != "QUIT":
                 # To standardize input
                 direction = data[0].upper()
                 dest_floor = int(data[1])
