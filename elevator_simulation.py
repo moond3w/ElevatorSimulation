@@ -79,13 +79,13 @@ class Status(Enum):
 input_queue = queue.Queue()
 
 # Creates signal for elevator to respond
-# Outputs: [DIRECTION, DEST_FLOOR, CAPACITY, CURR_FLOOR]
+# Outputs: [DIRECTION, DEST_FLOOR, CAPACITY, START_FLOOR]
 def create_signal(elevator):
     # Reset after each input
     invalid_direction = True
     invalid_dest_floor = True
     invalid_capacity = True
-    invalid_curr_floor = True
+    invalid_start_floor = True
 
     # Set direction of elevator
     while invalid_direction:
@@ -99,7 +99,7 @@ def create_signal(elevator):
 
     # Set destination floor
     while invalid_dest_floor:
-        dest_floor_input = input("Enter floor number or 'QUIT' to exit: ")
+        dest_floor_input = input("Enter destination floor number or 'QUIT' to exit: ")
         # Floor must be within range set in Elevator Class
         try:
             if (dest_floor_input.upper() == "QUIT"):
@@ -124,33 +124,33 @@ def create_signal(elevator):
         except ValueError:
             print ("Invalid capacity.")
     
-    # Set current floor
-    while invalid_curr_floor:
-        curr_floor_input = input("Enter floor number or 'QUIT' to exit: ")
+    # Set starting floor
+    while invalid_start_floor:
+        start_floor_input = input("Enter starting floor number or 'QUIT' to exit: ")
         # Floor must be within range set in Elevator Class
         try:
-            if (curr_floor_input.upper() == "QUIT"):
+            if (start_floor_input.upper() == "QUIT"):
                 return "QUIT"
-            elif (0 < int(curr_floor_input) <= elevator.floor):
-                invalid_curr_floor = False
+            elif (0 < int(start_floor_input) <= elevator.floor):
+                invalid_start_floor = False
             else:
                 print ("Invalid floor.")
         except ValueError:
             print ("Invalid floor.")
     
-    return ([direction_input, dest_floor_input, capacity_input, curr_floor_input])
+    return ([direction_input, dest_floor_input, capacity_input, start_floor_input])
 
 # Checks:
 # 1: Current capacity + new capacity <= elevator max capacity
 # 2: If UP:    current_floor < dest_floor
 # 3: If DOWN:  current_floor > dest_floor
 # Ignore commands if check fails
-def sanity_check(elevator, dest_floor, capacity):
+def sanity_check(elevator, direction, dest_floor, capacity):
     if (elevator.current_capacity + capacity) <= elevator.capacity:
-        if elevator.status == Status.UP and dest_floor > elevator.current_floor:
+        if direction == "UP" and dest_floor > elevator.current_floor:
             return True
         
-        if elevator.status == Status.DOWN and dest_floor < elevator.current_floor:
+        if direction == "DOWN" and dest_floor < elevator.current_floor:
             return True
     
     return False
@@ -163,7 +163,7 @@ def listen_for_input(elevator):
     while elevator_running:
         signal = create_signal(elevator)
 
-        # Put into queue [DIRECTION, DEST_FLOOR, CAPACITY, CURR_FLOOR] or "QUIT"
+        # Put into queue [DIRECTION, DEST_FLOOR, CAPACITY, START_FLOOR] or "QUIT"
         input_queue.put(signal)
 
         if signal == "QUIT":
@@ -176,28 +176,52 @@ def process_elevator(elevator):
     while elevator_running:
         # Wait for input to appear in the queue
         if not input_queue.empty():
-            data = input_queue.get()
+            signal = input_queue.get()
 
             # Program ends if receives "QUIT"
-            if data != "QUIT":
+            if signal != "QUIT":
                 # To standardize input
-                direction = data[0].upper()
-                dest_floor = int(data[1])
-                capacity = int(data[2])
+                direction = signal[0].upper()
+                dest_floor = int(signal[1])
+                capacity = int(signal[2])
+                start_floor = int(signal[3])
 
-                # Simulate elevator
-                if direction == "UP" or direction == "DOWN":
-                    elevator.set_status(direction)
-                # For debugging
+                print ("Received Signal : ", signal)
+                print ("Moving to floor : ", start_floor)
+
+                # Elevator will respond by moving to the signaled start floor regardless of sanity check 
+                # (i.e. responding to other parts of the signal)
+                if (elevator.current_floor - start_floor > 0):
+                    elevator.set_status("DOWN")
+                elif (elevator.current_floor - start_floor < 0):
+                    elevator.set_status("UP")
                 else:
-                    print ("Unexpected Error in processing elevator UP or DOWN")
-                    print ("Current data:", data)
+                    pass # do nothing
                 
-                # Sanity check on value
-                if sanity_check(elevator, dest_floor, capacity):
-                    # Increase current capacity of elevator
+                while elevator.current_floor != start_floor:
+                    if elevator.status == Status.UP:
+                        elevator.move_up()
+                        time.sleep(2) # Simulate some processing time
+
+                    elif elevator.status == Status.DOWN:
+                        elevator.move_down()
+                        time.sleep(2) # Simulate some processing time
+                
+                print ("Arrived at floor : ", start_floor)
+                elevator.set_status("REST")
+                
+                # Sanity check on values
+                if sanity_check(elevator, direction, dest_floor, capacity):
+                    # Start response to elevator signal
                     elevator.current_capacity += capacity
                     print (capacity, "passengers boarded", elevator.id, ".")
+
+                    if direction == "UP" or direction == "DOWN":
+                        elevator.set_status(direction)
+                    # For debugging
+                    else:
+                        print ("Unexpected Error in processing elevator UP or DOWN")
+                        print ("Current signal:", signal)
 
                     # Move elevator to floor
                     while elevator.current_floor != dest_floor:
@@ -233,7 +257,7 @@ def process_elevator(elevator):
 def __main__():
     # Set up variables 
     max_capacity = 15
-    max_floors = 20
+    max_floors = 10
 
     # Initialization
     ele_A = Elevator(id="ELEVATOR_A", capacity=max_capacity, floor=max_floors)
